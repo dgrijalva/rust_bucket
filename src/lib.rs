@@ -3,9 +3,8 @@ extern crate redis_module;
 
 use redis_module::{raw, Context, NextArg, RedisResult, RedisError};
 use redis_module::redisvalue::RedisValue;
-use std::convert::{TryFrom,Into};
 use std::cmp::min;
-use byteorder::{BigEndian,ByteOrder};
+// use byteorder::{BigEndian,ByteOrder};
 use redis_module::native_types::RedisType;
 use redis_module::redisraw::bindings::{RedisModule_Milliseconds};
 use std::os::raw::c_void;
@@ -58,33 +57,33 @@ unsafe extern "C" fn free(value: *mut c_void) {
     Box::from_raw(value as *mut Bucket);
 }
 
-impl Bucket {
-    fn unpack_int(value: RedisValue) -> Result<i64, &'static str> {
-        if let RedisValue::Integer(v) = value {
-            return Ok(v)
-        }
-        Err(UNPACK_ERROR)
-    }
-}
+// impl Bucket {
+//     fn unpack_int(value: RedisValue) -> Result<i64, &'static str> {
+//         if let RedisValue::Integer(v) = value {
+//             return Ok(v)
+//         }
+//         Err(UNPACK_ERROR)
+//     }
+// }
 
-const UNPACK_ERROR : &str = "Value is not a bucket";
+// const UNPACK_ERROR : &str = "Value is not a bucket";
 const TIME_ERROR : &str = "RedisMillisecond is required but not available";
-impl TryFrom<&str> for Bucket {
-    type Error = &'static str;
+// impl TryFrom<&str> for Bucket {
+//     type Error = &'static str;
 
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        if value.len() == 32 {
-            Ok(Bucket{
-                value: BigEndian::read_i64(&value[..7].as_bytes()), 
-                capacity: BigEndian::read_i64(&value[8..15].as_bytes()), 
-                fill_rate: BigEndian::read_i64(&value[16..23].as_bytes()), 
-                last_fill: BigEndian::read_i64(&value[24..].as_bytes())
-            })
-        } else {
-            Err(UNPACK_ERROR)
-        }
-    }
-}
+//     fn try_from(value: &str) -> Result<Self, Self::Error> {
+//         if value.len() == 32 {
+//             Ok(Bucket{
+//                 value: BigEndian::read_i64(&value[..7].as_bytes()), 
+//                 capacity: BigEndian::read_i64(&value[8..15].as_bytes()), 
+//                 fill_rate: BigEndian::read_i64(&value[16..23].as_bytes()), 
+//                 last_fill: BigEndian::read_i64(&value[24..].as_bytes())
+//             })
+//         } else {
+//             Err(UNPACK_ERROR)
+//         }
+//     }
+// }
 
 fn time() -> Result<i64,RedisError> {
     // FIXME: can we get at this without unsafe?
