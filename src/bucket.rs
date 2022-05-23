@@ -1,6 +1,5 @@
-use byteorder::{BigEndian, ByteOrder};
 use redis_module::redisraw::bindings::RedisModule_Milliseconds;
-use redis_module::{raw, Context, NextArg, RedisError, RedisResult, RedisString};
+use redis_module::RedisError;
 use std::cmp::min;
 
 // Bucket format: [value: i64, capacity: i64, fill_rate: i64, last_fill: i64]
@@ -66,22 +65,4 @@ impl Bucket {
         let last_fill = self.last_fill + (additions * self.fill_rate);
         (min(self.value + additions, self.capacity), last_fill)
     }
-
-    // fn to_buf(&self) -> Vec<u8> {
-    //     let mut buf = vec![0; 32];
-    //     BigEndian::write_i64(&mut buf[..7], self.value);
-    //     BigEndian::write_i64(&mut buf[8..15], self.capacity);
-    //     BigEndian::write_i64(&mut buf[16..23], self.fill_rate);
-    //     BigEndian::write_i64(&mut buf[24..], self.last_fill);
-    //     buf
-    // }
-
-    // fn from_buf(value: &[u8]) -> Bucket {
-    //     Bucket {
-    //         value: BigEndian::read_i64(&value[..7]),
-    //         capacity: BigEndian::read_i64(&value[8..15]),
-    //         fill_rate: BigEndian::read_i64(&value[16..23]),
-    //         last_fill: BigEndian::read_i64(&value[24..]),
-    //     }
-    // }
 }
