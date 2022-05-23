@@ -63,11 +63,17 @@ fn bucket_take(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
         .next()
         .ok_or_else(|| RedisError::Str("expected key name"))?;
 
+    // optional second argument for how many tokens to take
+    let mut amount = 1i64;
+    if let Some(v) = args.next().map(|s| s.parse_integer().ok()).flatten() {
+        amount = v;
+    }
+
     let key = ctx.open_key_writable(&key_name);
     match key.get_value::<Bucket>(&BUCKET_REDIS_TYPE)? {
         Some(bucket) => {
             log_notice(&format!("Read {:?} : {:?}", key_name, bucket));
-            let v = bucket.take(1).map(|v| RedisValue::Integer(v))?;
+            let v = bucket.take(amount).map(|v| RedisValue::Integer(v))?;
             log_notice(&format!("Take: {:?} | Post value: {:?}", v, bucket));
             Ok(v)
         }
