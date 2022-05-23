@@ -3,41 +3,13 @@ extern crate redis_module;
 
 mod bucket;
 
-use bucket::{free, rdb_load, rdb_save, Bucket};
-use redis_module::logging::{log_debug, log_notice, log_warning};
-use redis_module::native_types::RedisType;
+use bucket::{Bucket, BUCKET_REDIS_TYPE};
 use redis_module::redisvalue::RedisValue;
-use redis_module::{raw, Context, NextArg, RedisError, RedisResult, RedisString};
-use std::os::raw::{c_int, c_void};
-
-static BUCKET_REDIS_TYPE: RedisType = RedisType::new(
-    "dg-Bucket",
-    0,
-    raw::RedisModuleTypeMethods {
-        version: raw::REDISMODULE_TYPE_METHOD_VERSION as u64,
-        rdb_load: Some(rdb_load),
-        rdb_save: Some(rdb_save),
-        aof_rewrite: None,
-        free: Some(free),
-
-        // Currently unused by Redis
-        mem_usage: None,
-        digest: None,
-
-        // Aux data
-        aux_load: None,
-        aux_save: None,
-        aux_save_triggers: 0,
-
-        free_effort: None,
-        unlink: None,
-        copy: None,
-        defrag: None,
-    },
-);
+use redis_module::{Context, NextArg, RedisError, RedisResult, RedisString};
 
 // - Redis Actions
 
+/// Create a new bucket. `bucket.create :key :capacity :ms_per_token`
 fn bucket_create(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
     let mut args = args.into_iter().skip(1);
     let key_name = args
@@ -46,11 +18,12 @@ fn bucket_create(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
     let bucket = Bucket::new(args.next_i64()?, args.next_i64()?)?;
 
     let key = ctx.open_key_writable(&key_name);
-    log_notice(&format!("Created {:?} : {:?}", key_name, bucket));
+    // log_notice(&format!("Created {:?} : {:?}", key_name, bucket));
     key.set_value(&BUCKET_REDIS_TYPE, bucket)?;
     Ok(RedisValue::Integer(0))
 }
 
+/// Take tickets from bucket. `bucket.take :key [:quantity (default 1)]`
 fn bucket_take(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
     let mut args = args.into_iter().skip(1);
     let key_name = args
@@ -66,15 +39,16 @@ fn bucket_take(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
     let key = ctx.open_key_writable(&key_name);
     match key.get_value::<Bucket>(&BUCKET_REDIS_TYPE)? {
         Some(bucket) => {
-            log_notice(&format!("Read {:?} : {:?}", key_name, bucket));
+            // log_notice(&format!("Read {:?} : {:?}", key_name, bucket));
             let v = bucket.take(amount).map(|v| RedisValue::Integer(v))?;
-            log_notice(&format!("Take: {:?} | Post value: {:?}", v, bucket));
+            // log_notice(&format!("Take: {:?} | Post value: {:?}", v, bucket));
             Ok(v)
         }
         None => Err(RedisError::nonexistent_key()),
     }
 }
 
+/// Get number of tokens in bucket. `bucket.peek :key`
 fn bucket_peek(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
     let mut args = args.into_iter().skip(1);
     let key = args

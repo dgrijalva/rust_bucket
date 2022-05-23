@@ -1,6 +1,7 @@
-use redis_module::logging::{log_debug, log_notice, log_warning};
+use redis_module::logging::log_notice;
+use redis_module::native_types::RedisType;
 use redis_module::redisraw::bindings::RedisModule_Milliseconds;
-use redis_module::{raw, Context, NextArg, RedisError, RedisResult, RedisString};
+use redis_module::{raw, RedisError};
 use std::cmp::min;
 use std::os::raw::{c_int, c_void};
 
@@ -91,7 +92,7 @@ impl Bucket {
     }
 }
 
-pub extern "C" fn rdb_load(rdb: *mut raw::RedisModuleIO, encver: c_int) -> *mut c_void {
+extern "C" fn rdb_load(rdb: *mut raw::RedisModuleIO, _encver: c_int) -> *mut c_void {
     let load = || -> Result<Bucket, RedisError> {
         Ok(Bucket {
             value: raw::load_signed(rdb)?,
@@ -110,7 +111,7 @@ pub extern "C" fn rdb_load(rdb: *mut raw::RedisModuleIO, encver: c_int) -> *mut 
     }
 }
 
-pub unsafe extern "C" fn rdb_save(rdb: *mut raw::RedisModuleIO, value: *mut c_void) {
+unsafe extern "C" fn rdb_save(rdb: *mut raw::RedisModuleIO, value: *mut c_void) {
     let bucket = &*(value as *mut Bucket);
     raw::save_signed(rdb, bucket.value);
     raw::save_signed(rdb, bucket.capacity);
@@ -118,46 +119,32 @@ pub unsafe extern "C" fn rdb_save(rdb: *mut raw::RedisModuleIO, value: *mut c_vo
     raw::save_signed(rdb, bucket.last_fill);
 }
 
-pub unsafe extern "C" fn free(value: *mut c_void) {
+unsafe extern "C" fn free(value: *mut c_void) {
     Box::from_raw(value as *mut Bucket);
 }
 
-// FIXME: tests don't run for some reason
+pub static BUCKET_REDIS_TYPE: RedisType = RedisType::new(
+    "dg-Bucket",
+    0,
+    raw::RedisModuleTypeMethods {
+        version: raw::REDISMODULE_TYPE_METHOD_VERSION as u64,
+        rdb_load: Some(rdb_load),
+        rdb_save: Some(rdb_save),
+        aof_rewrite: None,
+        free: Some(free),
 
-// #[cfg(test)]
-// mod test {
-//     use super::*;
+        // Currently unused by Redis
+        mem_usage: None,
+        digest: None,
 
-//     struct TestCase {
-//         name: &'static str,
-//         capacity: i64,
-//         fill_rate: i64,
-//         last_fill: i64,
-//         elapsed: i64,
-//         result: i64,
-//     }
+        // Aux data
+        aux_load: None,
+        aux_save: None,
+        aux_save_triggers: 0,
 
-//     #[test]
-//     fn test_new_value() {
-//         let cases = [TestCase {
-//             name: "zero",
-//             capacity: 0,
-//             fill_rate: 0,
-//             last_fill: 0,
-//             elapsed: 0,
-//             result: 0,
-//         }];
-
-//         for case in cases {
-//             let bucket = Bucket {
-//                 value: 0,
-//                 capacity: case.capacity,
-//                 fill_rate: case.fill_rate,
-//                 last_fill: case.last_fill,
-//             };
-
-//             let (result, _) = bucket.new_value(case.last_fill + case.elapsed);
-//             assert_eq!(case.result, result);
-//         }
-//     }
-// }
+        free_effort: None,
+        unlink: None,
+        copy: None,
+        defrag: None,
+    },
+);
