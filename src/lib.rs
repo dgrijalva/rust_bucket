@@ -4,6 +4,7 @@ extern crate redis_module;
 mod bucket;
 
 use bucket::Bucket;
+use redis_module::logging::{log_debug, log_notice, log_warning};
 use redis_module::native_types::RedisType;
 use redis_module::redisvalue::RedisValue;
 use redis_module::{raw, Context, NextArg, RedisError, RedisResult, RedisString};
@@ -45,29 +46,33 @@ unsafe extern "C" fn free(value: *mut c_void) {
 
 fn bucket_create(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
     let mut args = args.into_iter().skip(1);
-    let key = args
+    let key_name = args
         .next()
         .ok_or_else(|| RedisError::Str("expected key name"))?;
-    let bucket = Bucket::new(args.next_i64()?, args.next_i64()?);
+    let bucket = Bucket::new(args.next_i64()?, args.next_i64()?)?;
 
-    let key = ctx.open_key_writable(&key);
+    let key = ctx.open_key_writable(&key_name);
+    log_notice(&format!("Created {:?} : {:?}", key_name, bucket));
     key.set_value(&BUCKET_REDIS_TYPE, bucket)?;
     Ok(RedisValue::Integer(0))
 }
 
 fn bucket_take(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
     let mut args = args.into_iter().skip(1);
-    let key = args
+    let key_name = args
         .next()
         .ok_or_else(|| RedisError::Str("expected key name"))?;
 
-    let key = ctx.open_key_writable(&key);
-    let res = match key.get_value::<Bucket>(&BUCKET_REDIS_TYPE)? {
-        Some(bucket) => bucket.take(1).map(|v| RedisValue::Integer(v)),
+    let key = ctx.open_key_writable(&key_name);
+    match key.get_value::<Bucket>(&BUCKET_REDIS_TYPE)? {
+        Some(bucket) => {
+            log_notice(&format!("Read {:?} : {:?}", key_name, bucket));
+            let v = bucket.take(1).map(|v| RedisValue::Integer(v))?;
+            log_notice(&format!("Take: {:?} | Post value: {:?}", v, bucket));
+            Ok(v)
+        }
         None => Err(RedisError::nonexistent_key()),
-    };
-
-    res
+    }
 }
 
 fn bucket_peek(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
