@@ -1,7 +1,8 @@
 use redis_module::logging::{log_debug, log_notice, log_warning};
 use redis_module::redisraw::bindings::RedisModule_Milliseconds;
-use redis_module::RedisError;
+use redis_module::{raw, Context, NextArg, RedisError, RedisResult, RedisString};
 use std::cmp::min;
+use std::os::raw::{c_int, c_void};
 
 // Bucket format: [value: i64, capacity: i64, fill_rate: i64, last_fill: i64]
 // value: number of tokens in bucket
@@ -88,6 +89,37 @@ impl Bucket {
         // Apply additions, limited by capacity
         (min(self.value + additions, self.capacity), last_fill)
     }
+}
+
+pub extern "C" fn rdb_load(rdb: *mut raw::RedisModuleIO, encver: c_int) -> *mut c_void {
+    let load = || -> Result<Bucket, RedisError> {
+        Ok(Bucket {
+            value: raw::load_signed(rdb)?,
+            capacity: raw::load_signed(rdb)?,
+            fill_rate: raw::load_signed(rdb)?,
+            last_fill: raw::load_signed(rdb)?,
+        })
+    };
+
+    match load() {
+        Ok(bucket) => Box::into_raw(Box::new(bucket)) as *mut c_void,
+        Err(err) => {
+            log_notice(&format!("Error reading bucket value {:?}", err));
+            0 as *mut c_void
+        }
+    }
+}
+
+pub unsafe extern "C" fn rdb_save(rdb: *mut raw::RedisModuleIO, value: *mut c_void) {
+    let bucket = &*(value as *mut Bucket);
+    raw::save_signed(rdb, bucket.value);
+    raw::save_signed(rdb, bucket.capacity);
+    raw::save_signed(rdb, bucket.fill_rate);
+    raw::save_signed(rdb, bucket.last_fill);
+}
+
+pub unsafe extern "C" fn free(value: *mut c_void) {
+    Box::from_raw(value as *mut Bucket);
 }
 
 // FIXME: tests don't run for some reason

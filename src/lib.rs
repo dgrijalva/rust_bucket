@@ -3,22 +3,20 @@ extern crate redis_module;
 
 mod bucket;
 
-use bucket::Bucket;
+use bucket::{free, rdb_load, rdb_save, Bucket};
 use redis_module::logging::{log_debug, log_notice, log_warning};
 use redis_module::native_types::RedisType;
 use redis_module::redisvalue::RedisValue;
 use redis_module::{raw, Context, NextArg, RedisError, RedisResult, RedisString};
-use std::os::raw::c_void;
+use std::os::raw::{c_int, c_void};
 
 static BUCKET_REDIS_TYPE: RedisType = RedisType::new(
     "dg-Bucket",
     0,
     raw::RedisModuleTypeMethods {
         version: raw::REDISMODULE_TYPE_METHOD_VERSION as u64,
-        // rdb_load: Some(rdb_load),
-        // rdb_save: Some(rdb_save),
-        rdb_load: None,
-        rdb_save: None,
+        rdb_load: Some(rdb_load),
+        rdb_save: Some(rdb_save),
         aof_rewrite: None,
         free: Some(free),
 
@@ -37,10 +35,6 @@ static BUCKET_REDIS_TYPE: RedisType = RedisType::new(
         defrag: None,
     },
 );
-
-unsafe extern "C" fn free(value: *mut c_void) {
-    Box::from_raw(value as *mut Bucket);
-}
 
 // - Redis Actions
 
