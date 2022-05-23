@@ -4,10 +4,10 @@ extern crate redis_module;
 use redis_module::{raw, Context, NextArg, RedisResult, RedisError};
 use redis_module::redisvalue::RedisValue;
 use std::cmp::min;
-// use byteorder::{BigEndian,ByteOrder};
+use byteorder::{BigEndian,ByteOrder};
 use redis_module::native_types::RedisType;
-use redis_module::redisraw::bindings::{RedisModule_Milliseconds};
-use std::os::raw::c_void;
+use redis_module::redisraw::bindings::{RedisModule_Milliseconds, RedisModule_SaveStringBuffer, RedisModule_LoadStringBuffer};
+use std::os::raw::{c_void, c_int, c_char};
 
 
 // Bucket format: [value: i64, capacity: i64, fill_rate: i64, last_fill: i64]
@@ -30,6 +30,24 @@ impl Bucket {
         let last_fill = self.last_fill + (additions * self.fill_rate);
         (min(self.value + additions, self.capacity), last_fill)
     }
+
+    fn to_buf(&self) -> Vec<u8> {
+        let mut buf = vec!(0;32);
+        BigEndian::write_i64(&mut buf[..7], self.value);
+        BigEndian::write_i64(&mut buf[8..15], self.capacity);
+        BigEndian::write_i64(&mut buf[16..23], self.fill_rate);
+        BigEndian::write_i64(&mut buf[24..], self.last_fill);
+        buf
+    }
+
+    fn from_buf(value: &[u8]) -> Bucket {
+        Bucket{
+            value: BigEndian::read_i64(&value[..7]), 
+            capacity: BigEndian::read_i64(&value[8..15]), 
+            fill_rate: BigEndian::read_i64(&value[16..23]), 
+            last_fill: BigEndian::read_i64(&value[24..])
+        }
+    }
 }
 
 static BUCKET_REDIS_TYPE: RedisType = RedisType::new(
@@ -37,6 +55,8 @@ static BUCKET_REDIS_TYPE: RedisType = RedisType::new(
     0,
     raw::RedisModuleTypeMethods {
         version: raw::REDISMODULE_TYPE_METHOD_VERSION as u64,
+        // rdb_load: Some(rdb_load),
+        // rdb_save: Some(rdb_save),
         rdb_load: None,
         rdb_save: None,
         aof_rewrite: None,
@@ -55,6 +75,24 @@ static BUCKET_REDIS_TYPE: RedisType = RedisType::new(
 
 unsafe extern "C" fn free(value: *mut c_void) {
     Box::from_raw(value as *mut Bucket);
+}
+
+extern "C" fn rdb_load(rdb: *mut raw::RedisModuleIO, encver: c_int) -> *mut c_void {
+    let mut len = 0;
+    let buf : &[u8];
+    unsafe {
+        let c_buffer = RedisModule_LoadStringBuffer.unwrap()(rdb, &mut len);
+        // let buf : &[u8] = &*(c_buffer as *mut [u8;len]);
+        buf = std::slice::from_raw_parts(c_buffer as *const u8, len);
+    }
+    let bucket = Bucket::from_buf(buf);
+    Box::into_raw(Box::new(bucket)) as *mut c_void
+}
+
+unsafe extern "C" fn rdb_save(rdb: *mut raw::RedisModuleIO, value: *mut c_void) {
+    let bucket = &*(value as *mut Bucket);
+    let buf = bucket.to_buf();
+    RedisModule_SaveStringBuffer.unwrap()(rdb, buf.as_ptr() as *const c_char, buf.len())
 }
 
 // impl Bucket {

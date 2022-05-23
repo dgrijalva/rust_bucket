@@ -1,2 +1,5 @@
+*.rdb
 /target
 Cargo.lock
+
+
